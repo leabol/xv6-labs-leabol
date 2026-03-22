@@ -1,0 +1,10 @@
+{
+  "C_Cpp.errorSquiggles": "enabled",
+  "C_Cpp.intelliSenseEngine": "default",
+  "C_Cpp.default.cStandard": "gnu11",
+  "C_Cpp.default.intelliSenseMode": "linux-gcc-riscv64",
+  "files.associations": {
+    "*.h": "c",
+    "*.S": "asm"
+  }
+}
