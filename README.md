@@ -11,7 +11,8 @@
 
 | Lab | Status | Notes |
 | :--- | :---: | :--- |
-| Lab 1: Utilities |  working | Implemented `sleep`, `find`, `xargs` |
+| Lab 1: Utilities |  ok | Implemented `sleep`, `find`, `xargs` |
+| Lab 2: system calls |  working | |
 
 ---
 
