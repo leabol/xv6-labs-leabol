@@ -1,0 +1,51 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "xv6-gdb",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/kernel/kernel",
+            "stopAtEntry": true,
+            "MIMode": "gdb",
+            "cwd": "${workspaceFolder}",
+            "miDebuggerPath": "/usr/bin/gdb-multiarch",
+            "miDebuggerArgs": "-q -nx",
+            "launchCompleteCommand": "None",
+            "setupCommands": [
+                {
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "text": "set mi-async off",
+                    "ignoreFailures": true
+                },
+                {
+                    "text": "set architecture riscv:rv64",
+                    "ignoreFailures": true
+                },
+                {
+                    "text": "target remote 127.0.0.1:${input:gdbPort}",
+                    "ignoreFailures": false
+                },
+                {
+                    "text": "set disassemble-next-line auto",
+                    "ignoreFailures": true
+                },
+                {
+                    "text": "set riscv use-compressed-breakpoints yes",
+                    "ignoreFailures": true
+                }
+            ]
+        }
+    ],
+    "inputs": [
+        {
+            "id": "gdbPort",
+            "type": "promptString",
+            "description": "xv6 GDB port (run `make print-gdbport`)",
+            "default": "26001"
+        }
+    ]
+}
