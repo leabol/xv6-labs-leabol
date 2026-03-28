@@ -106,3 +106,19 @@ sys_trace(void)
   myproc()->trace_mark = mark;
   return 0;
 }
+
+uint64
+sys_sysinfo(void)
+{
+  uint64 info;
+  if (argaddr(0, &info) < 0){
+    return -1;
+  }
+  if (clcfree(info) < 0) {
+    return -1;
+  }
+  if (procstate(info) < 0) {
+    return -1;
+  }
+  return 0;
+}

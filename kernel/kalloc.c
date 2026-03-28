@@ -8,6 +8,7 @@
 #include "spinlock.h"
 #include "riscv.h"
 #include "defs.h"
+#include "proc.h"
 
 void freerange(void *pa_start, void *pa_end);
 
@@ -79,4 +80,24 @@ kalloc(void)
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
+}
+
+uint64
+clcfree(uint64 addr)
+{
+  struct run *r;
+  int n = 0;
+  acquire(&kmem.lock);
+  r = kmem.freelist;
+  while(r){
+    r = r->next;
+    n++;
+  }
+  release(&kmem.lock);
+  struct proc *p = myproc();
+  uint64 tep = n*4096;
+  if(copyout(p->pagetable, addr, (char*)&tep, sizeof(tep)) < 0){
+    return -1;
+  }
+  return 1;
 }

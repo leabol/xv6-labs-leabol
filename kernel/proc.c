@@ -656,3 +656,25 @@ procdump(void)
     printf("\n");
   }
 }
+
+int
+procstate(uint64 addr)
+{
+  struct proc *p;
+  uint64 nproc = 0;
+  
+  // Count all processes that are not UNUSED
+  for(p = proc; p < &proc[NPROC]; p++){
+    acquire(&p->lock);
+    if(p->state != UNUSED){
+      nproc++;
+    }
+    release(&p->lock);
+  }
+  
+  p = myproc();
+  if (copyout(p->pagetable, addr+8, (char*)&nproc, sizeof(nproc)) < 0){
+    return -1;
+  }
+  return 1;
+}
