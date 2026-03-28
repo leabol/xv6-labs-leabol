@@ -164,6 +164,7 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  p->trace_mark = 0;
 }
 
 // Create a user page table for a given process,
@@ -300,6 +301,7 @@ fork(void)
     if(p->ofile[i])
       np->ofile[i] = filedup(p->ofile[i]);
   np->cwd = idup(p->cwd);
+  np->trace_mark = p->trace_mark;
 
   safestrcpy(np->name, p->name, sizeof(p->name));
 
