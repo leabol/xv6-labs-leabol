@@ -1,4 +1,5 @@
 {
+  "task.allowAutomaticTasks": "on",
   "C_Cpp.errorSquiggles": "enabled",
   "C_Cpp.intelliSenseEngine": "default",
   "C_Cpp.default.cStandard": "gnu11",
