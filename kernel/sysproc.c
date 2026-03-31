@@ -80,7 +80,25 @@ sys_sleep(void)
 int
 sys_pgaccess(void)
 {
-  // lab pgtbl: your code here.
+  uint64 saddr, dst;
+  int sz;
+  if (argaddr(0, &saddr) < 0) {
+    return -1;
+  }
+  if (argint(1, &sz) < 0) {
+    return -1;
+  }
+  if (argaddr(2, &dst) < 0) {
+    return -1;
+  }
+  if (sz > 64){
+    return -1;
+  }
+  struct proc *p = myproc();
+  if (pgaccess(p->pagetable, saddr , sz, dst) < 0){
+    return -1;
+  }
+  
   return 0;
 }
 #endif

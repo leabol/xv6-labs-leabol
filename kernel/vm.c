@@ -456,3 +456,25 @@ vmprint(pagetable_t addr)
   printf("page table %p\n", addr);
   vmprintwalk(addr, 0);
 }
+
+uint64
+pgaccess(pagetable_t pgt, uint64 addr, int sz, uint64 dist)
+{
+  unsigned int abits = 0;
+
+  uint64 a = PGROUNDDOWN(addr);
+  for (int i = 0; i < sz; i++){
+    pte_t *pte = walk(pgt, a+(i * PGSIZE), 0);
+    if (pte == 0){
+      return -1;
+    }
+    if ((*pte & PTE_A) != 0){
+      abits |= (1 << i);
+    } 
+    *pte &= ~PTE_A;
+  }
+  if (copyout(pgt, dist, (char*)&abits, sizeof(abits)) < 0){
+    return -1;
+  }
+  return 0;
+}
