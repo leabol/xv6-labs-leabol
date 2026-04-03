@@ -9,6 +9,8 @@
 #include "riscv.h"
 #include "defs.h"
 
+char paddrcount[8 * PGSIZE];
+
 void freerange(void *pa_start, void *pa_end);
 
 extern char end[]; // first address after kernel.
@@ -46,6 +48,10 @@ freerange(void *pa_start, void *pa_end)
 void
 kfree(void *pa)
 {
+  if (paddrcount[ADDRINDEX(pa)] > 1){
+    paddrcount[ADDRINDEX(pa)]--;
+    return;
+  }
   struct run *r;
 
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
@@ -60,6 +66,7 @@ kfree(void *pa)
   r->next = kmem.freelist;
   kmem.freelist = r;
   release(&kmem.lock);
+  paddrcount[ADDRINDEX(pa)] = 0;
 }
 
 // Allocate one 4096-byte page of physical memory.
@@ -76,7 +83,9 @@ kalloc(void)
     kmem.freelist = r->next;
   release(&kmem.lock);
 
-  if(r)
+  if(r){
     memset((char*)r, 5, PGSIZE); // fill with junk
+    paddrcount[ADDRINDEX(r)]++;
+  }
   return (void*)r;
 }

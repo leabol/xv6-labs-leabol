@@ -5,7 +5,6 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
-
 /*
  * the kernel's page table.
  */
@@ -14,6 +13,8 @@ pagetable_t kernel_pagetable;
 extern char etext[];  // kernel.ld sets this to end of kernel code.
 
 extern char trampoline[]; // trampoline.S
+
+extern char paddrcount[];
 
 // Make a direct-map page table for the kernel.
 pagetable_t
@@ -303,7 +304,6 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
@@ -311,20 +311,16 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
+    *pte |= PTE_O;   //add cow flag
+    *pte &= ~PTE_W;  // clear write flag
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
-      goto err;
+    if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
+      uvmunmap(new, 0, i / PGSIZE, 1);
+      return -1;
     }
+    paddrcount[ADDRINDEX(pa)]++;  
   }
   return 0;
-
- err:
-  uvmunmap(new, 0, i / PGSIZE, 1);
-  return -1;
 }
 
 // mark a PTE invalid for user access.
@@ -356,6 +352,35 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
     n = PGSIZE - (dstva - va0);
     if(n > len)
       n = len;
+    pte_t *pte = walk(pagetable, va0, 0);
+    if ((*pte & PTE_U) == 0){
+      printf("write invalid\n");
+      return -1;
+    }
+    if (*pte & PTE_O){
+      if (paddrcount[ADDRINDEX(pa0)] == 1){
+        *pte &= ~PTE_O;
+        *pte |= PTE_W;
+      }else{
+        uint64 pa;
+        if ((pa = (uint64)kalloc()) == 0){
+          printf("kalloc failed\n");
+          return -1;
+        }
+        memmove((void*)pa, (void*)pa0, PGSIZE);
+        paddrcount[ADDRINDEX(pa0)]--;
+
+        uint flag =PTE_FLAGS(*pte);
+        flag &= ~PTE_O;
+        flag |= PTE_W;
+        pte_t npte = PA2PTE(pa);
+        npte |= flag;
+        *pte = npte;
+
+        pa0 = pa;
+      }
+    }
+
     memmove((void *)(pa0 + (dstva - va0)), src, n);
 
     len -= n;
@@ -431,4 +456,40 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+int
+cow_write(pagetable_t pagetable)
+{                 
+    uint64 fpage = PGROUNDDOWN(r_stval());
+    if (fpage >= MAXVA){
+      return -1;
+    }
+    uint64 opa = walkaddr(pagetable, fpage);
+    pte_t *pte = walk(pagetable, fpage, 0);
+    if (opa == 0 || pte == 0)
+      return -1;
+    if (((*pte & PTE_V) == 0) || ((*pte & PTE_U) == 0) || ((*pte & PTE_O) == 0))
+      return -1;
+      
+    if (paddrcount[ADDRINDEX(opa)] == 1){
+      *pte &= ~PTE_O;
+      *pte |= PTE_W;
+      return 0;
+    }
+    uint64 pa;
+    if ((pa = (uint64)kalloc()) == 0){
+      printf("kalloc failed\n");
+      return -1;
+    }
+    memmove((void*)pa, (void*)opa, PGSIZE);
+    paddrcount[ADDRINDEX(opa)]--;
+
+    uint flag =PTE_FLAGS(*pte);
+    flag &= ~PTE_O;
+    flag |= PTE_W;
+    pte_t npte = PA2PTE(pa);
+    npte |= flag;
+    *pte = npte;
+    return 0;
 }
