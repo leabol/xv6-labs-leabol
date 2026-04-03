@@ -483,7 +483,7 @@ cow_write(pagetable_t pagetable)
       return -1;
     }
     memmove((void*)pa, (void*)opa, PGSIZE);
-    paddrcount[ADDRINDEX(opa)]--;
+    kfree((void*)opa);
 
     uint flag =PTE_FLAGS(*pte);
     flag &= ~PTE_O;
