@@ -663,6 +663,18 @@ sigalarm(int n, uint64 handler)
   p->interval = n;
   p->is_alarming = 0;
   p->handler = handler;
-  printf("%d %p\n", p->interval, p->handler);
+  // printf("%d %p\n", p->interval, p->handler);
+  return 0;
+}
+
+int
+sigreturn()
+{
+  struct proc *p = myproc();
+  p->tick_count = 0;
+  p->is_alarming = 0;
+  // printf("clear clock tick\n");
+  memmove(p->trapframe, (void*)&p->frame_bak, sizeof(struct trapframe));
+  // printf("restroe\n");
   return 0;
 }

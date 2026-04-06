@@ -114,3 +114,9 @@ sys_sigalarm()
   sigalarm(n, handler);
   return 0;
 }
+
+uint64
+sys_sigreturn()
+{
+  return sigreturn();
+}
