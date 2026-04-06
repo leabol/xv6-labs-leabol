@@ -96,3 +96,18 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64
+sys_sigalarm()
+{
+  int n;
+  uint64 handler;
+  if (argint(0, &n) < 0){
+    return -1;
+  }
+  if (argaddr(1, &handler) < 0){
+    return -1;
+  }
+  sigalarm(n, handler);
+  return 0;
+}

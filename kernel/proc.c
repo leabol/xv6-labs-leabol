@@ -654,3 +654,14 @@ procdump(void)
     printf("\n");
   }
 }
+
+
+int 
+sigalarm(int n, uint64 handler)
+{
+  struct proc *p = myproc();
+  p->interval = n;
+  p->handler = handler;
+  printf("%d %p\n", p->interval, p->handler);
+  return 0;
+}
