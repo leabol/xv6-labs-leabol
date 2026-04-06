@@ -105,6 +105,9 @@ sys_sigalarm()
   if (argint(0, &n) < 0){
     return -1;
   }
+  if (n == 0){
+    return -1;
+  }
   if (argaddr(1, &handler) < 0){
     return -1;
   }
