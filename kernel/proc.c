@@ -661,6 +661,7 @@ sigalarm(int n, uint64 handler)
 {
   struct proc *p = myproc();
   p->interval = n;
+  p->is_alarming = 0;
   p->handler = handler;
   printf("%d %p\n", p->interval, p->handler);
   return 0;
