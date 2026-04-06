@@ -15,6 +15,39 @@ struct thread {
   char       stack[STACK_SIZE]; /* the thread's stack */
   int        state;             /* FREE, RUNNING, RUNNABLE */
 };
+char stack[STACK_SIZE] = {
+  /*   0 */ [0]   = '\0', // ra
+  /*   8 */ [8]   = '\0', // sp
+  /*  16 */ [16]  = '\0', // gp
+  /*  24 */ [24]  = '\0', // tp
+  /*  32 */ [32]  = '\0', // t0
+  /*  40 */ [40]  = '\0', // t1
+  /*  48 */ [48]  = '\0', // t2
+  /*  56 */ [56]  = '\0', // s0/fp
+  /*  64 */ [64]  = '\0', // s1
+  /*  72 */ [72]  = '\0', // a0
+  /*  80 */ [80]  = '\0', // a1
+  /*  88 */ [88]  = '\0', // a2
+  /*  96 */ [96]  = '\0', // a3
+  /* 104 */ [104] = '\0', // a4
+  /* 112 */ [112] = '\0', // a5
+  /* 120 */ [120] = '\0', // a6
+  /* 128 */ [128] = '\0', // a7
+  /* 136 */ [136] = '\0', // s2
+  /* 144 */ [144] = '\0', // s3
+  /* 152 */ [152] = '\0', // s4
+  /* 160 */ [160] = '\0', // s5
+  /* 168 */ [168] = '\0', // s6
+  /* 176 */ [176] = '\0', // s7
+  /* 184 */ [184] = '\0', // s8
+  /* 192 */ [192] = '\0', // s9
+  /* 200 */ [200] = '\0', // s10
+  /* 208 */ [208] = '\0', // s11
+  /* 216 */ [216] = '\0', // t3
+  /* 224 */ [224] = '\0', // t4
+  /* 232 */ [232] = '\0', // t5
+  /* 240 */ [240] = '\0', // t6
+};
 struct thread all_thread[MAX_THREAD];
 struct thread *current_thread;
 extern void thread_switch(uint64, uint64);
@@ -62,6 +95,7 @@ thread_schedule(void)
      * Invoke thread_switch to switch from t to next_thread:
      * thread_switch(??, ??);
      */
+    thread_switch((uint64)t, (uint64)current_thread);
   } else
     next_thread = 0;
 }
@@ -74,8 +108,14 @@ thread_create(void (*func)())
   for (t = all_thread; t < all_thread + MAX_THREAD; t++) {
     if (t->state == FREE) break;
   }
+  uint64 *context = (uint64 *)t->stack;
+
+  for (int i = 0; i < 32; i++) {
+    context[i] = 0;
+  }
+  context[0] = (uint64)func;
+  context[1] = (uint64)(t->stack + STACK_SIZE);
   t->state = RUNNABLE;
-  // YOUR CODE HERE
 }
 
 void 
