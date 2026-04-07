@@ -10,43 +10,44 @@
 #define STACK_SIZE  8192
 #define MAX_THREAD  4
 
+struct frame{
+  /*   0 */ uint64 ra;
+  /*   8 */ uint64 sp;
+  /*  16 */ uint64 gp;
+  /*  24 */ uint64 tp;
+  /*  32 */ uint64 t0;
+  /*  40 */ uint64 t1;
+  /*  48 */ uint64 t2;
+  /*  56 */ uint64 s0;
+  /*  64 */ uint64 s1;
+  /*  72 */ uint64 a0;
+  /*  80 */ uint64 a1;
+  /*  88 */ uint64 a2;
+  /*  96 */ uint64 a3;
+  /* 104 */ uint64 a4;
+  /* 112 */ uint64 a5;
+  /* 120 */ uint64 a6;
+  /* 128 */ uint64 a7;
+  /* 136 */ uint64 s2;
+  /* 144 */ uint64 s3;
+  /* 152 */ uint64 s4;
+  /* 160 */ uint64 s5;
+  /* 168 */ uint64 s6;
+  /* 176 */ uint64 s7;
+  /* 184 */ uint64 s8;
+  /* 192 */ uint64 s9;
+  /* 200 */ uint64 s10;
+  /* 208 */ uint64 s11;
+  /* 216 */ uint64 t3;
+  /* 224 */ uint64 t4;
+  /* 232 */ uint64 t5;
+  /* 240 */ uint64 t6;
+};
 
 struct thread {
-  char       stack[STACK_SIZE]; /* the thread's stack */
-  int        state;             /* FREE, RUNNING, RUNNABLE */
-};
-char stack[STACK_SIZE] = {
-  /*   0 */ [0]   = '\0', // ra
-  /*   8 */ [8]   = '\0', // sp
-  /*  16 */ [16]  = '\0', // gp
-  /*  24 */ [24]  = '\0', // tp
-  /*  32 */ [32]  = '\0', // t0
-  /*  40 */ [40]  = '\0', // t1
-  /*  48 */ [48]  = '\0', // t2
-  /*  56 */ [56]  = '\0', // s0/fp
-  /*  64 */ [64]  = '\0', // s1
-  /*  72 */ [72]  = '\0', // a0
-  /*  80 */ [80]  = '\0', // a1
-  /*  88 */ [88]  = '\0', // a2
-  /*  96 */ [96]  = '\0', // a3
-  /* 104 */ [104] = '\0', // a4
-  /* 112 */ [112] = '\0', // a5
-  /* 120 */ [120] = '\0', // a6
-  /* 128 */ [128] = '\0', // a7
-  /* 136 */ [136] = '\0', // s2
-  /* 144 */ [144] = '\0', // s3
-  /* 152 */ [152] = '\0', // s4
-  /* 160 */ [160] = '\0', // s5
-  /* 168 */ [168] = '\0', // s6
-  /* 176 */ [176] = '\0', // s7
-  /* 184 */ [184] = '\0', // s8
-  /* 192 */ [192] = '\0', // s9
-  /* 200 */ [200] = '\0', // s10
-  /* 208 */ [208] = '\0', // s11
-  /* 216 */ [216] = '\0', // t3
-  /* 224 */ [224] = '\0', // t4
-  /* 232 */ [232] = '\0', // t5
-  /* 240 */ [240] = '\0', // t6
+  char          stack[STACK_SIZE]; /* the thread's stack */
+  struct frame  frame;             /* the contents of thread*/
+  int           state;             /* FREE, RUNNING, RUNNABLE */
 };
 struct thread all_thread[MAX_THREAD];
 struct thread *current_thread;
@@ -74,7 +75,7 @@ thread_schedule(void)
   t = current_thread + 1;
   for(int i = 0; i < MAX_THREAD; i++){
     if(t >= all_thread + MAX_THREAD)
-      t = all_thread;
+      t = all_thread;   //start find forword again
     if(t->state == RUNNABLE) {
       next_thread = t;
       break;
@@ -91,11 +92,8 @@ thread_schedule(void)
     next_thread->state = RUNNING;
     t = current_thread;
     current_thread = next_thread;
-    /* YOUR CODE HERE
-     * Invoke thread_switch to switch from t to next_thread:
-     * thread_switch(??, ??);
-     */
-    thread_switch((uint64)t, (uint64)current_thread);
+
+    thread_switch((uint64)&(t->frame), (uint64)&(current_thread->frame));
   } else
     next_thread = 0;
 }
@@ -108,13 +106,10 @@ thread_create(void (*func)())
   for (t = all_thread; t < all_thread + MAX_THREAD; t++) {
     if (t->state == FREE) break;
   }
-  uint64 *context = (uint64 *)t->stack;
 
-  for (int i = 0; i < 32; i++) {
-    context[i] = 0;
-  }
-  context[0] = (uint64)func;
-  context[1] = (uint64)(t->stack + STACK_SIZE);
+  memset((void*)&t->frame,0,sizeof(t->frame));
+  t->frame.ra = (uint64)func;  //ra -> pc
+  t->frame.sp = (uint64)(t->stack + STACK_SIZE); //sp -> top
   t->state = RUNNABLE;
 }
 

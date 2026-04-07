@@ -71,5 +71,5 @@ thread_switch:
 	ld t5, 232(a1)
 	ld t6, 240(a1)
 	ld a0, 72(a1)
-	ld a1, 80(a1)
+	ld a1, 80(a1)   // !! finaly load a1
 	ret    /* return to ra */
