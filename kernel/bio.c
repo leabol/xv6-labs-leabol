@@ -53,6 +53,24 @@ hash(uint dev, uint blockno)
   return key % NBUCKETS;
 }
 
+static void
+reuse_buf(struct buf *evict_buf, struct buf *head, uint dev, uint blockno)
+{
+  evict_buf->dev = dev;
+  evict_buf->blockno = blockno;
+  evict_buf->valid = 0;
+  evict_buf->refcnt = 1;
+
+  evict_buf->next->prev = evict_buf->prev;
+  evict_buf->prev->next = evict_buf->next;
+
+  evict_buf->next = head->next;
+  evict_buf->prev = head;
+  head->next->prev = evict_buf;
+  head->next = evict_buf;
+  evict_buf->timestamp = ticks;
+}
+
 void
 binit(void)
 {
@@ -75,6 +93,7 @@ binit(void)
     b->prev = head;
     head->next->prev = b;
     head->next = b;
+    b->timestamp = 0;
   }
 }
 
@@ -84,52 +103,84 @@ binit(void)
 static struct buf*
 bget(uint dev, uint blockno)
 {
-  struct buf *evict_buf;
-
   uint key = hash(dev,blockno);
-
   struct buf *head = &bcache.bufmap[key].pbuf;
+  struct buf *curr_buf;
+
+  // Fast path: lookup in target bucket.
   acquire(&bcache.bufmap[key].bcache_hash_lock);
-
-  struct buf *curr_buf = head->next;
-
-  // Is the block already cached?
-  while (curr_buf != head){
+  for(curr_buf = head->next; curr_buf != head; curr_buf = curr_buf->next){
     if(curr_buf->dev == dev && curr_buf->blockno == blockno){
       curr_buf->refcnt++;
+      curr_buf->timestamp = ticks;
       release(&bcache.bufmap[key].bcache_hash_lock);
       acquiresleep(&curr_buf->lock);
       return curr_buf;
     }
-    curr_buf = curr_buf->next;
   }
+  release(&bcache.bufmap[key].bcache_hash_lock);
 
-  // Not cached.
-  // Recycle the least recently used (LRU) unused buffer.
-  for(int i = 0; i < NBUCKETS; i++){
-    struct buf *bucket_head = &bcache.bufmap[i].pbuf;
-    evict_buf = bucket_head->next;  
-    while (evict_buf != bucket_head){
-      if(evict_buf->refcnt == 0) {
-        evict_buf->dev = dev;
-        evict_buf->blockno = blockno;
-        evict_buf->valid = 0;
-        evict_buf->refcnt = 1;
+  // Slow path: serialize allocation/reuse to avoid creating duplicate cache entries.
+  acquire(&bcache.lock);
 
-        evict_buf->next->prev = evict_buf->prev;
-        evict_buf->prev->next = evict_buf->next;
-
-        evict_buf->next = head->next;
-        evict_buf->prev = head;
-        head->next->prev = evict_buf;
-        head->next = evict_buf;
-        release(&bcache.bufmap[key].bcache_hash_lock);
-        acquiresleep(&evict_buf->lock);
-        return evict_buf;
-      }
-      evict_buf = evict_buf->next;
+  // Re-check after taking allocation lock, another CPU may have inserted it.
+  acquire(&bcache.bufmap[key].bcache_hash_lock);
+  for(curr_buf = head->next; curr_buf != head; curr_buf = curr_buf->next){
+    if(curr_buf->dev == dev && curr_buf->blockno == blockno){
+      curr_buf->refcnt++;
+      curr_buf->timestamp = ticks;
+      release(&bcache.bufmap[key].bcache_hash_lock);
+      release(&bcache.lock);
+      acquiresleep(&curr_buf->lock);
+      return curr_buf;
     }
   }
+  release(&bcache.bufmap[key].bcache_hash_lock);
+
+  // Recycle the least recently used unused buffer.
+  struct buf *evict_buf = 0, *b;
+  uint mint = 0xffffffff;
+  for(b = bcache.buf; b < bcache.buf+NBUF; b++){
+    if(b->refcnt == 0 && b->timestamp < mint){
+      mint = b->timestamp;
+      evict_buf = b;
+    }
+  }
+  if(evict_buf == 0){
+    release(&bcache.lock);
+    panic("evict_buf");
+  }
+
+  uint old_buf = hash(evict_buf->dev, evict_buf->blockno);
+  uint new_buf = key;
+  if(old_buf == new_buf){
+    acquire(&bcache.bufmap[new_buf].bcache_hash_lock);
+    if(evict_buf->refcnt != 0){
+      release(&bcache.bufmap[new_buf].bcache_hash_lock);
+      release(&bcache.lock);
+      return bget(dev, blockno);
+    }
+    reuse_buf(evict_buf, head, dev, blockno);
+    release(&bcache.bufmap[new_buf].bcache_hash_lock);
+  } else {
+    uint first_lock = old_buf > new_buf ? new_buf : old_buf;
+    uint second_lock = old_buf < new_buf ? new_buf : old_buf;
+    acquire(&bcache.bufmap[first_lock].bcache_hash_lock);
+    acquire(&bcache.bufmap[second_lock].bcache_hash_lock);
+    if(evict_buf->refcnt != 0){
+      release(&bcache.bufmap[second_lock].bcache_hash_lock);
+      release(&bcache.bufmap[first_lock].bcache_hash_lock);
+      release(&bcache.lock);
+      return bget(dev, blockno);
+    }
+    reuse_buf(evict_buf, head, dev, blockno);
+    release(&bcache.bufmap[second_lock].bcache_hash_lock);
+    release(&bcache.bufmap[first_lock].bcache_hash_lock);
+  }
+
+  release(&bcache.lock);
+  acquiresleep(&evict_buf->lock);
+  return evict_buf;
   panic("bget: no buffers");
 }
 
@@ -170,6 +221,8 @@ brelse(struct buf *b)
 
   acquire(&bcache.bufmap[key].bcache_hash_lock);
   b->refcnt--;
+  if (b->refcnt == 0)
+    b->timestamp = ticks;
   release(&bcache.bufmap[key].bcache_hash_lock);
 }
 
