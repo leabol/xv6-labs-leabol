@@ -23,6 +23,13 @@
 #include "fs.h"
 #include "buf.h"
 
+#define NBUCKETS 13 
+
+struct hashtable{
+  struct buf pbuf;
+  struct spinlock bcache_hash_lock;
+};
+
 struct {
   struct spinlock lock;
   struct buf buf[NBUF];
@@ -30,8 +37,21 @@ struct {
   // Linked list of all buffers, through prev/next.
   // Sorted by how recently the buffer was used.
   // head.next is most recent, head.prev is least.
-  struct buf head;
+  // struct buf head;
+  struct hashtable bufmap[NBUCKETS];
 } bcache;
+
+static uint
+hash(uint dev, uint blockno)
+{
+  // 1. 合并 dev 和 blockno：用异或混合高位和低位
+  uint key = dev ^ (blockno << 16) ^ (blockno >> 16);
+  
+  // 2. 乘法哈希 + 右移：利用质数乘数打散分布
+  key = key * 2654435761U;  
+  
+  return key % NBUCKETS;
+}
 
 void
 binit(void)
@@ -40,15 +60,21 @@ binit(void)
 
   initlock(&bcache.lock, "bcache");
 
-  // Create linked list of buffers
-  bcache.head.prev = &bcache.head;
-  bcache.head.next = &bcache.head;
-  for(b = bcache.buf; b < bcache.buf+NBUF; b++){
-    b->next = bcache.head.next;
-    b->prev = &bcache.head;
+  for(int i = 0; i < NBUCKETS; i++){
+    initlock(&bcache.bufmap[i].bcache_hash_lock,"bcache_lock");
+    struct buf *head = &bcache.bufmap[i].pbuf;
+    head->next = head;
+    head->prev = head;
+  }
+  int i = 0;
+  for(b = bcache.buf; b < bcache.buf+NBUF; b++, i++){
     initsleeplock(&b->lock, "buffer");
-    bcache.head.next->prev = b;
-    bcache.head.next = b;
+    
+    struct buf* head= &bcache.bufmap[i%NBUCKETS].pbuf;
+    b->next = head->next;
+    b->prev = head;
+    head->next->prev = b;
+    head->next = b;
   }
 }
 
@@ -58,31 +84,50 @@ binit(void)
 static struct buf*
 bget(uint dev, uint blockno)
 {
-  struct buf *b;
+  struct buf *evict_buf;
 
   acquire(&bcache.lock);
 
+  uint key = hash(dev,blockno);
+
+  struct buf *head = &bcache.bufmap[key].pbuf;
+  struct buf *curr_buf = head->next;
+
   // Is the block already cached?
-  for(b = bcache.head.next; b != &bcache.head; b = b->next){
-    if(b->dev == dev && b->blockno == blockno){
-      b->refcnt++;
+  while (curr_buf != head){
+    if(curr_buf->dev == dev && curr_buf->blockno == blockno){
+      curr_buf->refcnt++;
       release(&bcache.lock);
-      acquiresleep(&b->lock);
-      return b;
+      acquiresleep(&curr_buf->lock);
+      return curr_buf;
     }
+    curr_buf = curr_buf->next;
   }
 
   // Not cached.
   // Recycle the least recently used (LRU) unused buffer.
-  for(b = bcache.head.prev; b != &bcache.head; b = b->prev){
-    if(b->refcnt == 0) {
-      b->dev = dev;
-      b->blockno = blockno;
-      b->valid = 0;
-      b->refcnt = 1;
-      release(&bcache.lock);
-      acquiresleep(&b->lock);
-      return b;
+  for(int i = 0; i < NBUCKETS; i++){
+    struct buf *bucket_head = &bcache.bufmap[i].pbuf;
+    evict_buf = bucket_head->next;  
+    while (evict_buf != bucket_head){
+      if(evict_buf->refcnt == 0) {
+        evict_buf->dev = dev;
+        evict_buf->blockno = blockno;
+        evict_buf->valid = 0;
+        evict_buf->refcnt = 1;
+
+        evict_buf->next->prev = evict_buf->prev;
+        evict_buf->prev->next = evict_buf->next;
+
+        evict_buf->next = head->next;
+        evict_buf->prev = head;
+        head->next->prev = evict_buf;
+        head->next = evict_buf;
+        release(&bcache.lock);
+        acquiresleep(&evict_buf->lock);
+        return evict_buf;
+      }
+      evict_buf = evict_buf->next;
     }
   }
   panic("bget: no buffers");
@@ -123,15 +168,15 @@ brelse(struct buf *b)
 
   acquire(&bcache.lock);
   b->refcnt--;
-  if (b->refcnt == 0) {
-    // no one is waiting for it.
-    b->next->prev = b->prev;
-    b->prev->next = b->next;
-    b->next = bcache.head.next;
-    b->prev = &bcache.head;
-    bcache.head.next->prev = b;
-    bcache.head.next = b;
-  }
+  // if (b->refcnt == 0) {
+  //   // no one is waiting for it.
+  //   // b->next->prev = b->prev;
+  //   // b->prev->next = b->next;
+  //   // b->next = bcache.head.next;
+  //   // b->prev = &bcache.head;
+  //   // bcache.head.next->prev = b;
+  //   // bcache.head.next = b;
+  // }
   
   release(&bcache.lock);
 }
