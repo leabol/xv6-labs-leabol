@@ -86,18 +86,18 @@ bget(uint dev, uint blockno)
 {
   struct buf *evict_buf;
 
-  acquire(&bcache.lock);
-
   uint key = hash(dev,blockno);
 
   struct buf *head = &bcache.bufmap[key].pbuf;
+  acquire(&bcache.bufmap[key].bcache_hash_lock);
+
   struct buf *curr_buf = head->next;
 
   // Is the block already cached?
   while (curr_buf != head){
     if(curr_buf->dev == dev && curr_buf->blockno == blockno){
       curr_buf->refcnt++;
-      release(&bcache.lock);
+      release(&bcache.bufmap[key].bcache_hash_lock);
       acquiresleep(&curr_buf->lock);
       return curr_buf;
     }
@@ -123,7 +123,7 @@ bget(uint dev, uint blockno)
         evict_buf->prev = head;
         head->next->prev = evict_buf;
         head->next = evict_buf;
-        release(&bcache.lock);
+        release(&bcache.bufmap[key].bcache_hash_lock);
         acquiresleep(&evict_buf->lock);
         return evict_buf;
       }
@@ -166,33 +166,27 @@ brelse(struct buf *b)
 
   releasesleep(&b->lock);
 
-  acquire(&bcache.lock);
+  uint key = hash(b->dev,b->blockno);
+
+  acquire(&bcache.bufmap[key].bcache_hash_lock);
   b->refcnt--;
-  // if (b->refcnt == 0) {
-  //   // no one is waiting for it.
-  //   // b->next->prev = b->prev;
-  //   // b->prev->next = b->next;
-  //   // b->next = bcache.head.next;
-  //   // b->prev = &bcache.head;
-  //   // bcache.head.next->prev = b;
-  //   // bcache.head.next = b;
-  // }
-  
-  release(&bcache.lock);
+  release(&bcache.bufmap[key].bcache_hash_lock);
 }
 
 void
 bpin(struct buf *b) {
-  acquire(&bcache.lock);
+  uint key = hash(b->dev,b->blockno);
+  acquire(&bcache.bufmap[key].bcache_hash_lock);
   b->refcnt++;
-  release(&bcache.lock);
+  release(&bcache.bufmap[key].bcache_hash_lock);
 }
 
 void
 bunpin(struct buf *b) {
-  acquire(&bcache.lock);
+  uint key = hash(b->dev,b->blockno);
+  acquire(&bcache.bufmap[key].bcache_hash_lock);
   b->refcnt--;
-  release(&bcache.lock);
+  release(&bcache.bufmap[key].bcache_hash_lock);
 }
 
 
